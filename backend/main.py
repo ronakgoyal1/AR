@@ -9,8 +9,8 @@ app = FastAPI(title="AI Jewellery Try-On API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=["*"], # For production, you could restrict to your Vercel domain e.g. ["https://your-app.vercel.app"]
+    allow_credentials=False, # Must be False if allow_origins is ["*"]
     allow_methods=["*"],
     allow_headers=["*"],
 )
