@@ -27,7 +27,7 @@ def adaptive_metallic_reflection(fg_pil_img: Image.Image, mean_brightness: float
     return fg_pil_img
 
 def color_adaptation(bg_cv_img, fg_pil_img):
-    gray = cv2.cvtColor(bg_cv_img, cv2.COLOR_BGR2GRAY)
+    gray = cv2.cvtColor(bg_cv_img, cv2.COLOR_RGB2GRAY)
     mean_brightness = np.mean(gray)
     fg_pil_img = adaptive_metallic_reflection(fg_pil_img, mean_brightness)
     fg_pil_img = apply_noise(fg_pil_img, amount=0.015)

@@ -6,12 +6,22 @@ from .image_utils import apply_earring_overlay, color_adaptation
 import os
 import base64
 import io
+import logging
+
+logger = logging.getLogger(__name__)
 
 mp_face_mesh = mp.solutions.face_mesh
+mp_face_detection = mp.solutions.face_detection
+
 face_mesh = mp_face_mesh.FaceMesh(
     static_image_mode=True,
     max_num_faces=1,
     refine_landmarks=True,
+    min_detection_confidence=0.5
+)
+
+face_detection = mp_face_detection.FaceDetection(
+    model_selection=0, # 0 is best for close-range selfies
     min_detection_confidence=0.5
 )
 
@@ -65,11 +75,24 @@ def load_earring_asset(earring_id: str):
         case _: return create_drop((212, 175, 55, 255), (240, 240, 230, 255), 80, 150)
 
 def get_landmarks(pil_image):
-    cv_image = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
-    results = face_mesh.process(cv_image)
+    # MediaPipe requires RGB images. Do NOT convert to BGR.
+    img_rgb_arr = np.array(pil_image)
+    
+    logger.info("Running MediaPipe FaceMesh on RGB array...")
+    results = face_mesh.process(img_rgb_arr)
+    
     if not results.multi_face_landmarks:
-        return None, cv_image
-    return results.multi_face_landmarks[0], cv_image
+        logger.warning("FaceMesh failed to detect landmarks. Trying fallback FaceDetection...")
+        detection_results = face_detection.process(img_rgb_arr)
+        if not detection_results.detections:
+            logger.error("Fallback FaceDetection also failed.")
+            return None, img_rgb_arr
+        else:
+            logger.error("Face detected via fallback, but no mesh landmarks available. Face might be occluded or blurry.")
+            return None, img_rgb_arr
+
+    logger.info("FaceMesh successfully detected landmarks.")
+    return results.multi_face_landmarks[0], img_rgb_arr
 
 def img_to_b64(img):
     buffered = io.BytesIO()
@@ -77,10 +100,6 @@ def img_to_b64(img):
     return "data:image/jpeg;base64," + base64.b64encode(buffered.getvalue()).decode()
 
 def classify_face_shape(landmarks, img_w, img_h):
-    """
-    Very basic heuristic for face shape using MediaPipe landmarks.
-    Returns: 'Round', 'Oval', 'Square', or 'Heart'
-    """
     jaw_width = abs(landmarks.landmark[132].x - landmarks.landmark[361].x) * img_w
     cheek_width = abs(landmarks.landmark[234].x - landmarks.landmark[454].x) * img_w
     face_height = abs(landmarks.landmark[10].y - landmarks.landmark[152].y) * img_h
@@ -98,17 +117,10 @@ def classify_face_shape(landmarks, img_w, img_h):
         return "Round"
 
 def calculate_head_pose(landmarks):
-    """
-    Calculates head yaw and pitch based on 3D landmarks.
-    MediaPipe z-coordinates are relative to the center of the head.
-    """
-    # Nose tip (1) vs left/right ear tragus (234, 454) to estimate yaw
     left_z = landmarks.landmark[234].z
     right_z = landmarks.landmark[454].z
-    # difference in z gives us an idea of rotation (yaw)
-    yaw = (right_z - left_z) * 1.5 # arbitrary multiplier to get a rough radian-like value
+    yaw = (right_z - left_z) * 1.5 
     
-    # Nose tip vs chin (152) and forehead (10) to estimate pitch
     top_z = landmarks.landmark[10].z
     bottom_z = landmarks.landmark[152].z
     pitch = (bottom_z - top_z) * 1.5
@@ -116,15 +128,12 @@ def calculate_head_pose(landmarks):
     return yaw, pitch
 
 def process_tryon(pil_image: Image.Image, earring_id: str):
-    landmarks, cv_image = get_landmarks(pil_image)
+    landmarks, cv_rgb_image = get_landmarks(pil_image)
     if not landmarks:
-        raise ValueError("No face detected in the image")
+        raise ValueError("No face detected in the image. Please ensure your face is clearly visible, well-lit, and not obstructed.")
         
-    img_h, img_w, _ = cv_image.shape
+    img_h, img_w, _ = cv_rgb_image.shape
     
-    # Refined multi-landmark ear estimation for better stability
-    # Using an average of points around the earlobe:
-    # Left: 132, 177, 215. Right: 361, 401, 435.
     lx = (landmarks.landmark[132].x + landmarks.landmark[177].x) / 2
     ly = (landmarks.landmark[132].y + landmarks.landmark[177].y) / 2
     left_ear = (lx * img_w, ly * img_h)
@@ -133,7 +142,6 @@ def process_tryon(pil_image: Image.Image, earring_id: str):
     ry = (landmarks.landmark[361].y + landmarks.landmark[401].y) / 2
     right_ear = (rx * img_w, ry * img_h)
     
-    # Face width for scaling
     face_left = landmarks.landmark[234]
     face_right = landmarks.landmark[454]
     face_width = np.sqrt(
@@ -141,19 +149,18 @@ def process_tryon(pil_image: Image.Image, earring_id: str):
         (face_right.y * img_h - face_left.y * img_h)**2
     )
     
-    # Angle (Roll)
     dy = face_right.y * img_h - face_left.y * img_h
     dx = face_right.x * img_w - face_left.x * img_w
     angle = np.degrees(np.arctan2(dy, dx))
     
-    # Head Pose (Yaw, Pitch) for 3D perspective realism
     yaw, pitch = calculate_head_pose(landmarks)
-    
-    # Face Shape Classification
     face_shape = classify_face_shape(landmarks, img_w, img_h)
     
+    logger.info("Loading earring asset...")
     earring_img = load_earring_asset(earring_id)
-    earring_img = color_adaptation(cv_image, earring_img)
+    
+    logger.info("Applying color adaptation...")
+    earring_img = color_adaptation(cv_rgb_image, earring_img)
     
     variations = []
     scales = [1.0, 0.9, 1.1]
