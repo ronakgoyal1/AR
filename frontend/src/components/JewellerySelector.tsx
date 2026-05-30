@@ -11,9 +11,14 @@ export type Earring = {
 };
 
 export const SAMPLE_EARRINGS: Earring[] = [
-  { id: "e1", name: "Classic Gold Hoops", color: "Gold", price: "$250" },
-  { id: "e2", name: "Pearl Drops", color: "Silver/Pearl", price: "$320" },
-  { id: "e3", name: "Diamond Studs", color: "Platinum", price: "$850" },
+  { id: "e1", name: "Minimal Gold Hoops", color: "Gold", price: "$250" },
+  { id: "e2", name: "Minimal Silver Hoops", color: "Silver", price: "$180" },
+  { id: "e3", name: "Premium Diamond Studs", color: "Platinum/Diamond", price: "$850" },
+  { id: "e4", name: "Pearl Drops", color: "Gold/Pearl", price: "$320" },
+  { id: "e5", name: "Elegant Danglers", color: "Silver/Gold", price: "$400" },
+  { id: "e6", name: "Modern Jhumkas", color: "Gold", price: "$550" },
+  { id: "e7", name: "Emerald Statement", color: "Gold/Emerald", price: "$1200" },
+  { id: "e8", name: "Ruby Teardrop", color: "Silver/Ruby", price: "$950" },
 ];
 
 export default function JewellerySelector({ 
@@ -44,9 +49,11 @@ export default function JewellerySelector({
                 <Check className="w-3 h-3" />
               </div>
             )}
-            <div className="w-full h-32 bg-zinc-800 rounded-lg mb-4 flex items-center justify-center overflow-hidden">
-              {/* Placeholder for real earring image */}
-              <div className="w-12 h-16 border-2 border-dashed border-zinc-600 rounded-full opacity-50"></div>
+            <div className="w-full h-32 bg-zinc-800 rounded-lg mb-4 flex items-center justify-center overflow-hidden relative">
+              <div className="w-16 h-16 opacity-30 flex items-center justify-center font-bold text-zinc-600">
+                {/* Fallback visual for the thumbnail */}
+                {item.id}
+              </div>
             </div>
             <h4 className="font-medium text-zinc-100">{item.name}</h4>
             <p className="text-sm text-zinc-400 mt-1">{item.color}</p>

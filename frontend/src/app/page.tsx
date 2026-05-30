@@ -12,12 +12,14 @@ export default function Home() {
   const [selectedEarring, setSelectedEarring] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [results, setResults] = useState<any[] | null>(null);
+  const [faceShape, setFaceShape] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const handleUpload = (file: File) => {
     setSelectedFile(file);
     setOriginalImage(URL.createObjectURL(file));
     setResults(null);
+    setFaceShape(null);
     setError(null);
   };
 
@@ -44,6 +46,7 @@ export default function Home() {
       }
 
       setResults(data.results);
+      setFaceShape(data.face_shape);
     } catch (err: any) {
       setError(err.message || "An error occurred");
     } finally {
@@ -55,6 +58,7 @@ export default function Home() {
     setSelectedFile(null);
     setOriginalImage(null);
     setResults(null);
+    setFaceShape(null);
     setSelectedEarring(null);
   };
 
@@ -123,6 +127,7 @@ export default function Home() {
               originalImage={originalImage} 
               variations={results} 
               productName={SAMPLE_EARRINGS.find(e => e.id === selectedEarring)?.name || "Earrings"}
+              faceShape={faceShape}
               onReset={handleReset}
             />
           )}

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Download, RefreshCcw, MessageCircle, Heart, Share2, X } from "lucide-react";
+import { Download, RefreshCcw, MessageCircle, Heart, Share2, X, ZoomIn, ZoomOut, Sparkles } from "lucide-react";
 
 type Variation = {
   image: string;
@@ -14,19 +14,21 @@ export default function PreviewCanvas({
   originalImage,
   variations,
   productName,
+  faceShape,
   onReset
 }: {
   originalImage: string;
   variations: Variation[];
   productName: string;
+  faceShape?: string | null;
   onReset: () => void;
 }) {
   const [showOriginal, setShowOriginal] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [showConsultCTA, setShowConsultCTA] = useState(false);
+  const [isZoomed, setIsZoomed] = useState(false);
 
-  // Auto-surface the CTA after a short delay
   useEffect(() => {
     const timer = setTimeout(() => {
       setShowConsultCTA(true);
@@ -39,7 +41,7 @@ export default function PreviewCanvas({
   const handleWhatsApp = () => {
     const message = `Hi! I just tried the ${productName} using the Aura Virtual Try-On feature and would love to know more about pricing, availability, customization, and styling recommendations.`;
     const encodedMessage = encodeURIComponent(message);
-    const whatsappUrl = `https://wa.me/1234567890?text=${encodedMessage}`; // Replace with actual number
+    const whatsappUrl = `https://wa.me/1234567890?text=${encodedMessage}`;
     window.open(whatsappUrl, '_blank');
   };
 
@@ -59,10 +61,20 @@ export default function PreviewCanvas({
     }
   };
 
+  const getRecommendationText = () => {
+    if (!faceShape) return null;
+    switch(faceShape) {
+      case "Round": return "Danglers and drops complement round faces beautifully.";
+      case "Square": return "Hoops and rounded studs soften square jawlines.";
+      case "Heart": return "Chandelier and teardrop shapes balance heart faces.";
+      case "Oval": return "Your oval shape perfectly suits almost any style!";
+      default: return "This piece highlights your features elegantly.";
+    }
+  };
+
   return (
     <div className="w-full max-w-4xl mx-auto mt-8 flex flex-col items-center">
       
-      {/* Auto-surfaced Consultation Banner */}
       <AnimatePresence>
         {showConsultCTA && (
           <motion.div 
@@ -86,17 +98,28 @@ export default function PreviewCanvas({
         )}
       </AnimatePresence>
 
+      {faceShape && (
+        <div className="w-full flex items-center gap-2 mb-4 px-2">
+          <Sparkles className="w-5 h-5 text-amber-500" />
+          <span className="text-zinc-300 text-sm font-medium">
+            Stylist Note for <span className="text-white font-serif">{faceShape}</span> Face: {getRecommendationText()}
+          </span>
+        </div>
+      )}
+
       <div className="relative w-full aspect-[3/4] md:aspect-square max-h-[60vh] bg-zinc-900 rounded-2xl overflow-hidden shadow-2xl border border-zinc-800 group">
         <AnimatePresence mode="wait">
           <motion.img
             key={activeImage}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
+            initial={{ opacity: 0, scale: isZoomed ? 2 : 1 }}
+            animate={{ opacity: 1, scale: isZoomed ? 2 : 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.3 }}
+            drag={isZoomed}
+            dragConstraints={{ left: -200, right: 200, top: -200, bottom: 200 }}
             src={activeImage}
             alt="Try-on Preview"
-            className="w-full h-full object-contain"
+            className={`w-full h-full ${isZoomed ? "cursor-grab active:cursor-grabbing" : "object-contain"}`}
           />
         </AnimatePresence>
 
@@ -109,10 +132,17 @@ export default function PreviewCanvas({
           Hold to compare
         </button>
 
-        <div className="absolute top-4 right-4 flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+        <div className="absolute top-4 right-4 flex flex-col gap-2 z-10">
+          <button 
+            onClick={() => setIsZoomed(!isZoomed)}
+            className="p-3 bg-zinc-950/80 backdrop-blur-md border border-zinc-700 rounded-full text-zinc-300 hover:text-white transition-colors"
+            title="Zoom"
+          >
+            {isZoomed ? <ZoomOut className="w-5 h-5" /> : <ZoomIn className="w-5 h-5" />}
+          </button>
            <button 
             onClick={handleShare}
-            className="p-3 bg-zinc-950/80 backdrop-blur-md border border-zinc-700 rounded-full text-zinc-300 hover:text-white transition-colors"
+            className="p-3 bg-zinc-950/80 backdrop-blur-md border border-zinc-700 rounded-full text-zinc-300 hover:text-white transition-colors opacity-0 group-hover:opacity-100 transition-opacity"
             title="Share"
           >
             <Share2 className="w-5 h-5" />
@@ -120,7 +150,7 @@ export default function PreviewCanvas({
            <a 
             href={variations[selectedIndex].image}
             download="aura-tryon.jpg"
-            className="p-3 bg-zinc-950/80 backdrop-blur-md border border-zinc-700 rounded-full text-zinc-300 hover:text-white transition-colors flex"
+            className="p-3 bg-zinc-950/80 backdrop-blur-md border border-zinc-700 rounded-full text-zinc-300 hover:text-white transition-colors flex opacity-0 group-hover:opacity-100 transition-opacity"
             title="Download"
           >
             <Download className="w-5 h-5" />
@@ -173,7 +203,6 @@ export default function PreviewCanvas({
         </div>
       </div>
 
-      {/* Save Lookbook Modal */}
       <AnimatePresence>
         {showSaveModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">

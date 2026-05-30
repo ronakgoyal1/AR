@@ -1,0 +1,41 @@
+# =========================
+# Root Monorepo .gitignore
+# =========================
+
+# --- General ---
+.DS_Store
+Thumbs.db
+*.log
+.env
+.env.local
+.env.*.local
+
+# --- Backend (Python / FastAPI) ---
+backend/venv/
+backend/.venv/
+backend/__pycache__/
+backend/*.py[cod]
+backend/*$py.class
+backend/.pytest_cache/
+backend/assets/*.png # (Optional: keep if you want to track sample assets, uncomment if you don't)
+# !backend/assets/e1.png # Exception to keep samples
+
+# --- Frontend (Next.js) ---
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/build/
+frontend/.pnp.*
+frontend/.yarn/cache/
+frontend/coverage/
+
+# --- IDEs / Editors ---
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# --- OS Generated ---
+node_modules/
+.next/
+venv/

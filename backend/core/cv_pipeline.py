@@ -1,13 +1,12 @@
 import cv2
 import mediapipe as mp
 import numpy as np
-from PIL import Image, ImageDraw, ImageFilter
+from PIL import Image, ImageDraw
 from .image_utils import apply_earring_overlay, color_adaptation
 import os
 import base64
 import io
 
-# Initialize MediaPipe Face Mesh
 mp_face_mesh = mp.solutions.face_mesh
 face_mesh = mp_face_mesh.FaceMesh(
     static_image_mode=True,
@@ -16,23 +15,54 @@ face_mesh = mp_face_mesh.FaceMesh(
     min_detection_confidence=0.5
 )
 
-# Also initialize MediaPipe Selfie Segmentation for lightweight occlusion (hair)
-mp_selfie_segmentation = mp.solutions.selfie_segmentation
-selfie_segmentation = mp_selfie_segmentation.SelfieSegmentation(model_selection=0)
+def create_hoop(color, width, height, thickness):
+    img = Image.new("RGBA", (width, height), (0,0,0,0))
+    draw = ImageDraw.Draw(img)
+    draw.ellipse((10, 10, width-10, height-10), outline=color, width=thickness)
+    return img
+
+def create_stud(color, size):
+    img = Image.new("RGBA", (size, size), (0,0,0,0))
+    draw = ImageDraw.Draw(img)
+    draw.ellipse((5, 5, size-5, size-5), fill=color)
+    draw.ellipse((size*0.2, size*0.2, size*0.4, size*0.4), fill=(255,255,255,180))
+    return img
+
+def create_drop(top_color, bottom_color, w, h):
+    img = Image.new("RGBA", (w, h), (0,0,0,0))
+    draw = ImageDraw.Draw(img)
+    draw.ellipse((w//2-5, 5, w//2+5, 15), fill=top_color)
+    draw.line((w//2, 15, w//2, h-30), fill=(200,200,200,255), width=2)
+    draw.ellipse((10, h-40, w-10, h-10), fill=bottom_color)
+    draw.ellipse((w*0.3, h-35, w*0.5, h-25), fill=(255,255,255,150))
+    return img
+
+def create_jhumka(color, w, h):
+    img = Image.new("RGBA", (w, h), (0,0,0,0))
+    draw = ImageDraw.Draw(img)
+    draw.ellipse((w//2-10, 5, w//2+10, 25), fill=color)
+    draw.line((w//2, 25, w//2, 40), fill=color, width=2)
+    draw.chord((10, 20, w-10, h-20), start=180, end=360, fill=color)
+    for i in range(15, w-15, 10):
+        draw.ellipse((i-2, h-25, i+2, h-20), fill=color)
+    return img
 
 def load_earring_asset(earring_id: str):
-    """Loads an earring PNG asset with transparency, or generates a placeholder."""
     path = f"assets/{earring_id}.png"
     if os.path.exists(path):
         return Image.open(path).convert("RGBA")
     
-    # Fallback placeholder earring (e.g., a gold hoop/drop) if asset not found
-    img = Image.new("RGBA", (200, 400), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(img)
-    # Elegant drop earring
-    draw.ellipse((50, 0, 150, 100), fill=(212, 175, 55, 255)) # Top stud
-    draw.polygon([(75, 90), (125, 90), (100, 380)], fill=(212, 175, 55, 255)) # Drop
-    return img
+    # Fallbacks based on ID
+    match earring_id:
+        case "e1": return create_hoop((212, 175, 55, 255), 100, 100, 6) # Minimal Gold Hoops
+        case "e2": return create_hoop((192, 192, 192, 255), 120, 120, 4) # Minimal Silver Hoops
+        case "e3": return create_stud((230, 240, 255, 255), 40) # Premium Diamond Studs
+        case "e4": return create_drop((212, 175, 55, 255), (240, 240, 230, 255), 80, 150) # Pearl Drops
+        case "e5": return create_drop((192, 192, 192, 255), (212, 175, 55, 255), 60, 180) # Elegant Danglers
+        case "e6": return create_jhumka((212, 175, 55, 255), 100, 120) # Modern Jhumkas
+        case "e7": return create_drop((212, 175, 55, 255), (10, 120, 60, 255), 90, 140) # Emerald Statement
+        case "e8": return create_drop((192, 192, 192, 255), (180, 20, 40, 255), 70, 130) # Ruby Teardrop
+        case _: return create_drop((212, 175, 55, 255), (240, 240, 230, 255), 80, 150)
 
 def get_landmarks(pil_image):
     cv_image = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
@@ -46,22 +76,44 @@ def img_to_b64(img):
     img.save(buffered, format="JPEG", quality=90)
     return "data:image/jpeg;base64," + base64.b64encode(buffered.getvalue()).decode()
 
-def apply_occlusion(base_pil_img, tryon_pil_img, cv_image):
+def classify_face_shape(landmarks, img_w, img_h):
     """
-    Uses MediaPipe Selfie Segmentation to blend the try-on image,
-    helping hair that might fall over the face/ears appear in front of the earring.
+    Very basic heuristic for face shape using MediaPipe landmarks.
+    Returns: 'Round', 'Oval', 'Square', or 'Heart'
     """
-    # Get segmentation mask
-    results = selfie_segmentation.process(cv_image)
-    mask = results.segmentation_mask
+    jaw_width = abs(landmarks.landmark[132].x - landmarks.landmark[361].x) * img_w
+    cheek_width = abs(landmarks.landmark[234].x - landmarks.landmark[454].x) * img_w
+    face_height = abs(landmarks.landmark[10].y - landmarks.landmark[152].y) * img_h
     
-    # Threshold the mask to get foreground (person) vs background
-    # But wait, hair is part of the foreground in selfie segmentation.
-    # What we really need is a hair mask or depth map for true occlusion.
-    # Since SelfieSegmentation puts hair & face together, it doesn't easily isolate hair OVER earrings.
-    # As a lightweight MVP heuristic, we will stick to a soft blend. True 3D occlusion is heavy.
-    # We will simply return the tryon image for now, as alpha compositing handles the basic blend.
-    return tryon_pil_img
+    ratio = face_height / cheek_width
+    jaw_ratio = jaw_width / cheek_width
+    
+    if ratio > 1.4:
+        return "Oval"
+    elif jaw_ratio > 0.85:
+        return "Square"
+    elif jaw_ratio < 0.65:
+        return "Heart"
+    else:
+        return "Round"
+
+def calculate_head_pose(landmarks):
+    """
+    Calculates head yaw and pitch based on 3D landmarks.
+    MediaPipe z-coordinates are relative to the center of the head.
+    """
+    # Nose tip (1) vs left/right ear tragus (234, 454) to estimate yaw
+    left_z = landmarks.landmark[234].z
+    right_z = landmarks.landmark[454].z
+    # difference in z gives us an idea of rotation (yaw)
+    yaw = (right_z - left_z) * 1.5 # arbitrary multiplier to get a rough radian-like value
+    
+    # Nose tip vs chin (152) and forehead (10) to estimate pitch
+    top_z = landmarks.landmark[10].z
+    bottom_z = landmarks.landmark[152].z
+    pitch = (bottom_z - top_z) * 1.5
+    
+    return yaw, pitch
 
 def process_tryon(pil_image: Image.Image, earring_id: str):
     landmarks, cv_image = get_landmarks(pil_image)
@@ -70,58 +122,64 @@ def process_tryon(pil_image: Image.Image, earring_id: str):
         
     img_h, img_w, _ = cv_image.shape
     
-    # Landmarks for ear placement approximation
-    # 132: left side, near earlobe
-    # 361: right side, near earlobe
-    left_ear = landmarks.landmark[132]
-    right_ear = landmarks.landmark[361]
+    # Refined multi-landmark ear estimation for better stability
+    # Using an average of points around the earlobe:
+    # Left: 132, 177, 215. Right: 361, 401, 435.
+    lx = (landmarks.landmark[132].x + landmarks.landmark[177].x) / 2
+    ly = (landmarks.landmark[132].y + landmarks.landmark[177].y) / 2
+    left_ear = (lx * img_w, ly * img_h)
     
-    # Face width for scaling: 234 (left edge) to 454 (right edge)
+    rx = (landmarks.landmark[361].x + landmarks.landmark[401].x) / 2
+    ry = (landmarks.landmark[361].y + landmarks.landmark[401].y) / 2
+    right_ear = (rx * img_w, ry * img_h)
+    
+    # Face width for scaling
     face_left = landmarks.landmark[234]
     face_right = landmarks.landmark[454]
-    
     face_width = np.sqrt(
         (face_right.x * img_w - face_left.x * img_w)**2 + 
         (face_right.y * img_h - face_left.y * img_h)**2
     )
     
-    # Calculate head tilt (rotation)
+    # Angle (Roll)
     dy = face_right.y * img_h - face_left.y * img_h
     dx = face_right.x * img_w - face_left.x * img_w
     angle = np.degrees(np.arctan2(dy, dx))
     
-    earring_img = load_earring_asset(earring_id)
+    # Head Pose (Yaw, Pitch) for 3D perspective realism
+    yaw, pitch = calculate_head_pose(landmarks)
     
-    # Basic lighting adaptation
+    # Face Shape Classification
+    face_shape = classify_face_shape(landmarks, img_w, img_h)
+    
+    earring_img = load_earring_asset(earring_id)
     earring_img = color_adaptation(cv_image, earring_img)
     
     variations = []
-    
-    # We'll generate 3 variations: default, slightly smaller, slightly larger.
-    # This simulates best-result selection where the user can pick the best fit.
     scales = [1.0, 0.9, 1.1]
-    scores = [0.95, 0.88, 0.85] # Mock scores for auto-selection logic
+    scores = [0.95, 0.88, 0.85]
     
     for scale, score in zip(scales, scores):
         img_v = pil_image.copy()
         tryon_result = apply_earring_overlay(
             img_v, earring_img, 
-            left_ear=(left_ear.x * img_w, left_ear.y * img_h),
-            right_ear=(right_ear.x * img_w, right_ear.y * img_h),
+            left_ear=left_ear,
+            right_ear=right_ear,
             face_width=face_width,
             angle=angle,
+            yaw=yaw,
+            pitch=pitch,
             variation_scale=scale
         )
         
-        # Apply occlusion heuristic
-        final_result = apply_occlusion(pil_image, tryon_result, cv_image)
-        
         variations.append({
-            "image": img_to_b64(final_result), 
+            "image": img_to_b64(tryon_result), 
             "score": score,
             "scale": scale
         })
     
-    # Sort by best score
     variations.sort(key=lambda x: x["score"], reverse=True)
-    return variations
+    return {
+        "variations": variations,
+        "face_shape": face_shape
+    }

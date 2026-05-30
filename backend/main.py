@@ -25,9 +25,9 @@ async def try_on_endpoint(
         pil_image = Image.open(io.BytesIO(contents)).convert("RGB")
         
         # We process the image using cv_pipeline
-        processed_images = process_tryon(pil_image, earring_id)
+        result = process_tryon(pil_image, earring_id)
         
-        return {"success": True, "results": processed_images}
+        return {"success": True, "results": result["variations"], "face_shape": result["face_shape"]}
     except Exception as e:
         import traceback
         traceback.print_exc()
